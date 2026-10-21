@@ -213,7 +213,7 @@ function WindowSvg({ cfg, res, showDims }: { cfg: WindowConfig; res: CalcResult;
 
 function PiecesTable({ res }: { res: CalcResult }) {
   return (
-    <table className="w-full text-sm">
+    <table className="w-full text-sm [&_td]:px-2 [&_th]:px-2">
       <thead>
         <tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground">
           <th className="py-2">Código</th><th>Nombre</th><th className="text-right">Cant.</th><th className="text-right">Long. corte (mm)</th><th className="text-right">kg/m</th><th className="text-right">Peso unit. (kg)</th><th className="text-right">Peso total (kg)</th>
