@@ -3,7 +3,7 @@
 // Sustituir por las fichas técnicas oficiales de ALUVI.
 // =====================================================================
 
-export type ModelId = "sliding2" | "sliding3" | "fixed";
+export type ModelId = "aluvi2" | "sliding2" | "sliding3" | "fixed";
 export type Distribution = "equal" | "left-wide" | "center-wide";
 
 export const DEMO_PARAMS = {
@@ -29,6 +29,7 @@ export const GLASS_TYPES = {
 } as const;
 
 export const MODELS: Record<ModelId, { label: string; leaves: number }> = {
+  aluvi2: { label: "Ventana corrediza de 2 hojas (ALUVI)", leaves: 2 },
   sliding2: { label: "Corrediza 2 hojas", leaves: 2 },
   sliding3: { label: "Corrediza 3 hojas", leaves: 3 },
   fixed: { label: "Ventana fija", leaves: 1 },
@@ -45,9 +46,9 @@ export interface WindowConfig {
 }
 
 export const DEFAULT_CONFIG: WindowConfig = {
-  model: "sliding2",
-  width: 1500,
-  height: 1200,
+  model: "aluvi2",
+  width: 2000,
+  height: 2000,
   leaves: 2,
   distribution: "equal",
   glassType: "float",
@@ -55,7 +56,7 @@ export const DEFAULT_CONFIG: WindowConfig = {
 };
 
 export interface Piece {
-  code: keyof typeof PROFILES;
+  code: string;
   name: string;
   qty: number;
   length: number; // mm
@@ -77,7 +78,46 @@ export interface CalcResult {
   glassArea: number;
   glassWeight: number;
   totalWeight: number;
+  glassCuts?: { qty: number; w: number; h: number }[];
+  pending?: string[];
 }
+
+// =====================================================================
+// MODELO TÉCNICO ALUVI — Corrediza 2 hojas (fuente: documento técnico).
+// PROTOTIPO PENDIENTE DE VALIDACIÓN. Todos los valores son editables.
+// =====================================================================
+export type Base = "L" | "H" | "L/2";
+export interface TechProfile { code: string; name: string; kgm: number; qty: number | null; base: Base; offset: number }
+export interface Accessory { name: string; qty: number | null; unit: string; note?: string }
+export interface TechParams {
+  profiles: TechProfile[];
+  glass: { qty: number; widthDivisor: number; widthOffset: number; heightOffset: number };
+  accessories: Accessory[];
+}
+export const ALUVI_REF_SIZE = { width: 2000, height: 2000 };
+export const DEFAULT_TECH: TechParams = {
+  profiles: [
+    { code: "7621", name: "Riel superior", kgm: 1.038, qty: 1, base: "L", offset: -30 },
+    { code: "7622", name: "Riel inferior", kgm: 1.018, qty: 1, base: "L", offset: -30 },
+    { code: "7623", name: "Jamba", kgm: 0.551, qty: 2, base: "H", offset: 0 },
+    { code: "7624", name: "Cabezal", kgm: 0.525, qty: 2, base: "L/2", offset: -68 },
+    { code: "7625", name: "Zócalo pequeño superior", kgm: 0.558, qty: 1, base: "L/2", offset: -68 },
+    { code: "7625A", name: "Zócalo grande inferior", kgm: 0.842, qty: 1, base: "L/2", offset: -68 },
+    { code: "7626", name: "Pierna", kgm: 0.615, qty: 2, base: "H", offset: -71 },
+    { code: "7627", name: "Enganche", kgm: 0.64, qty: 2, base: "H", offset: -71 },
+  ],
+  glass: { qty: 2, widthDivisor: 2, widthOffset: -80, heightOffset: -157 },
+  accessories: [
+    { name: "Felpa", qty: 24, unit: "m" },
+    { name: "Silicona", qty: 31, unit: "m/l", note: "3 tubos" },
+    { name: "Ruedas", qty: 2, unit: "pieza" },
+    { name: "Canoa", qty: 1, unit: "pieza" },
+    { name: "Guías", qty: 8, unit: "pieza" },
+    { name: "Tornillo 8x0,5", qty: 8, unit: "pieza" },
+  ],
+};
+export const cutLength = (p: TechProfile, W: number, H: number) =>
+  (p.base === "L" ? W : p.base === "H" ? H : W / 2) + p.offset;
 
 const round = (n: number, d = 2) => Math.round(n * 10 ** d) / 10 ** d;
 
@@ -86,7 +126,7 @@ export function validate(c: WindowConfig): string[] {
   if (!c.width || c.width < 400 || c.width > 4000) w.push("El ancho debe estar entre 400 y 4000 mm.");
   if (!c.height || c.height < 300 || c.height > 3000) w.push("El alto debe estar entre 300 y 3000 mm.");
   if (!c.glassThickness || c.glassThickness <= 0) w.push("Falta el espesor del vidrio.");
-  if (c.model !== "fixed" && (!c.leaves || c.leaves < 2)) w.push("Una corrediza necesita al menos 2 hojas.");
+  if (c.model !== "fixed" && c.model !== "aluvi2" && (!c.leaves || c.leaves < 2)) w.push("Una corrediza necesita al menos 2 hojas.");
   return w;
 }
 
@@ -103,8 +143,9 @@ function ratios(n: number, d: Distribution): number[] {
   return Array.from({ length: n }, (_, i) => (i === mid ? big : (1 - big) / (n - 1)));
 }
 
-export function calculate(c: WindowConfig): CalcResult | null {
+export function calculate(c: WindowConfig, tech: TechParams = DEFAULT_TECH): CalcResult | null {
   if (validate(c).length) return null;
+  if (c.model === "aluvi2") return calculateAluvi(c, tech);
   const P = DEMO_PARAMS;
   const n = c.model === "fixed" ? 1 : c.leaves;
   const innerW = c.width - 2 * P.frameProfileWidth;
@@ -167,5 +208,38 @@ export function calculate(c: WindowConfig): CalcResult | null {
     glassArea: round(glassArea, 3),
     glassWeight: round(glassWeight),
     totalWeight: round(aluminumWeight + glassWeight),
+  };
+}
+
+function calculateAluvi(c: WindowConfig, t: TechParams): CalcResult {
+  const W = c.width, H = c.height;
+  const pending: string[] = [];
+  const pieces: Piece[] = t.profiles.map((p) => {
+    const length = cutLength(p, W, H);
+    const unitWeight = (length / 1000) * p.kgm;
+    if (p.qty == null) pending.push(`Cantidad de ${p.code} ${p.name} pendiente de confirmar.`);
+    const qty = p.qty ?? 0;
+    return { code: p.code, name: p.name, qty, length: round(length, 1), kgm: p.kgm, unitWeight: round(unitWeight, 3), totalWeight: round(qty * unitWeight, 3) };
+  });
+  const gw = round(W / t.glass.widthDivisor + t.glass.widthOffset, 1);
+  const gh = round(H + t.glass.heightOffset, 1);
+  // Dibujo esquemático: 2 hojas de L/2 con vidrio centrado.
+  const F = 30, half = W / 2;
+  const leaves: Leaf[] = [{ x: F, width: half - F + 15 }, { x: half - 15, width: half - F + 15 }];
+  const glass: GlassPane[] = leaves.slice(0, t.glass.qty).map((l) => ({
+    x: l.x + (l.width - gw) / 2, y: (H - gh) / 2, w: gw, h: gh,
+  }));
+  const pieceCount = pieces.reduce((s, p) => s + p.qty, 0);
+  const aluminumMeters = pieces.reduce((s, p) => s + (p.qty * p.length) / 1000, 0);
+  const aluminumWeight = pieces.reduce((s, p) => s + p.totalWeight, 0);
+  const glassArea = (t.glass.qty * gw * gh) / 1e6;
+  const glassWeight = glassArea * c.glassThickness * DEMO_PARAMS.glassDensity;
+  return {
+    pieces, leaves, glass, pieceCount,
+    aluminumMeters: round(aluminumMeters), aluminumWeight: round(aluminumWeight),
+    glassArea: round(glassArea, 3), glassWeight: round(glassWeight),
+    totalWeight: round(aluminumWeight + glassWeight),
+    glassCuts: [{ qty: t.glass.qty, w: gw, h: gh }],
+    pending,
   };
 }
