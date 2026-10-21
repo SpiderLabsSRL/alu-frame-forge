@@ -1,8 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useMemo, useState } from "react";
 import {
-  calculate, validate, DEFAULT_CONFIG, DEMO_PARAMS, GLASS_TYPES, MODELS, PROFILES,
-  type CalcResult, type WindowConfig, type ModelId, type Distribution,
+  calculate, validate, DEFAULT_CONFIG, DEFAULT_TECH, ALUVI_REF_SIZE, cutLength, DEMO_PARAMS, GLASS_TYPES, MODELS, PROFILES,
+  type CalcResult, type TechParams, type Base, type WindowConfig, type ModelId, type Distribution,
 } from "@/lib/aluvi";
 
 export const Route = createFileRoute("/")({
@@ -25,9 +25,10 @@ function Index() {
   const [showDims, setShowDims] = useState(true);
   const [tick, setTick] = useState(0);
   const [lastCalc, setLastCalc] = useState(() => new Date());
+  const [tech, setTech] = useState<TechParams>(DEFAULT_TECH);
   const warnings = validate(cfg);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  const res = useMemo(() => calculate(cfg), [cfg, tick]);
+  const res = useMemo(() => calculate(cfg, tech), [cfg, tech, tick]);
 
   const set = <K extends keyof WindowConfig>(k: K, v: WindowConfig[K]) => { setCfg((c) => ({ ...c, [k]: v })); setLastCalc(new Date()); };
   const setModel = (m: ModelId) => { setCfg((c) => ({ ...c, model: m, leaves: MODELS[m].leaves, distribution: "equal" })); setLastCalc(new Date()); };
@@ -45,13 +46,13 @@ function Index() {
         <div className="flex gap-2">
           <Btn onClick={() => { setCfg(EMPTY); setLastCalc(new Date()); }}>Nueva ventana</Btn>
           <Btn onClick={() => { setTick((t) => t + 1); setLastCalc(new Date()); }}>Recalcular</Btn>
-          <Btn onClick={() => { setCfg(DEFAULT_CONFIG); setShowDims(true); setLastCalc(new Date()); }}>Restablecer</Btn>
+          <Btn onClick={() => { setCfg(DEFAULT_CONFIG); setTech(DEFAULT_TECH); setShowDims(true); setLastCalc(new Date()); }}>Restablecer</Btn>
           <Btn primary onClick={() => window.print()}>Imprimir ficha</Btn>
         </div>
       </header>
 
       <div className="no-print border-b border-warning bg-warning-soft px-6 py-2 text-xs text-warning-foreground">
-        ⚠ Las fórmulas de corte, pesos por metro y densidad del vidrio son <b>parámetros de demostración</b>. Los resultados son estimaciones hasta introducir las fichas técnicas oficiales de ALUVI.
+        {cfg.model === "aluvi2" ? <>⚠ <b>Prototipo técnico pendiente de validación.</b> Descuentos, cantidades y pesos por metro tomados del documento técnico ALUVI; deben confirmarse antes de fabricar. Peso del vidrio estimado.</> : <>⚠ Las fórmulas de corte, pesos por metro y densidad del vidrio son <b>parámetros de demostración</b>. Los resultados son estimaciones hasta introducir las fichas técnicas oficiales de ALUVI.</>}
       </div>
 
       <main className="no-print grid grid-cols-[300px_1fr_340px] gap-4 p-4">
@@ -72,12 +73,12 @@ function Index() {
             <Field label="Alto (mm)"><NumInput value={cfg.height} onChange={(v) => set("height", v)} /></Field>
           </div>
           <Field label="Cantidad de hojas">
-            <select disabled={cfg.model === "fixed"} value={cfg.model === "fixed" ? 1 : cfg.leaves} onChange={(e) => set("leaves", +e.target.value)} className={inputCls}>
+            <select disabled={cfg.model === "fixed" || cfg.model === "aluvi2"} value={cfg.model === "fixed" ? 1 : cfg.leaves} onChange={(e) => set("leaves", +e.target.value)} className={inputCls}>
               {cfg.model === "fixed" ? <option value={1}>1 (fija)</option> : [2, 3, 4].map((n) => <option key={n} value={n}>{n}</option>)}
             </select>
           </Field>
           <Field label="Distribución de hojas">
-            <select disabled={cfg.model === "fixed"} value={cfg.distribution} onChange={(e) => set("distribution", e.target.value as Distribution)} className={inputCls}>
+            <select disabled={cfg.model === "fixed" || cfg.model === "aluvi2"} value={cfg.distribution} onChange={(e) => set("distribution", e.target.value as Distribution)} className={inputCls}>
               <option value="equal">Hojas iguales</option>
               <option value="left-wide">Hoja izquierda mayor</option>
               {cfg.leaves >= 3 && <option value="center-wide">Hoja central mayor</option>}
@@ -119,9 +120,11 @@ function Index() {
               {res ? <WindowSvg cfg={cfg} res={res} showDims={showDims} /> : <Warnings items={warnings} />}
             </div>
           </Panel>
-          <Panel title="Tabla de despiece" actions={<span className="text-xs text-muted-foreground">Calculado {lastCalc.toLocaleTimeString("es-BO")}</span>}>
+          <Panel title="Lista de cortes y materiales" actions={<span className="text-xs text-muted-foreground">Calculado {lastCalc.toLocaleTimeString("es-BO")}</span>}>
             {res ? <PiecesTable res={res} /> : <Warnings items={warnings} />}
+            {res && cfg.model === "aluvi2" && <AccessoriesTable tech={tech} cfg={cfg} />}
           </Panel>
+          {cfg.model === "aluvi2" && <TechEditor tech={tech} setTech={(t) => { setTech(t); setLastCalc(new Date()); }} cfg={cfg} />}
         </div>
 
         {/* Derecha */}
@@ -130,7 +133,7 @@ function Index() {
         </Panel>
       </main>
 
-      <PrintSheet cfg={cfg} res={res} warnings={warnings} />
+      <PrintSheet cfg={cfg} res={res} warnings={warnings} tech={tech} />
     </div>
   );
 }
@@ -168,10 +171,12 @@ function Warnings({ items }: { items: string[] }) {
 function WindowSvg({ cfg, res, showDims }: { cfg: WindowConfig; res: CalcResult; showDims: boolean }) {
   const { width: W, height: H } = cfg;
   const pad = Math.max(W, H) * 0.12;
-  const F = DEMO_PARAMS.frameProfileWidth, L = DEMO_PARAMS.leafProfileWidth;
+  const isA = cfg.model === "aluvi2";
+  const F = isA ? 30 : DEMO_PARAMS.frameProfileWidth, L = isA ? 50 : DEMO_PARAMS.leafProfileWidth;
+  const bite = isA ? 0 : DEMO_PARAMS.glassBite;
   const fs = Math.max(W, H) * 0.028;
-  const leafY = F + DEMO_PARAMS.leafHeightClearance / 2;
-  const leafH = H - 2 * F - DEMO_PARAMS.leafHeightClearance;
+  const leafY = isA ? F : F + DEMO_PARAMS.leafHeightClearance / 2;
+  const leafH = isA ? H - 2 * F : H - 2 * F - DEMO_PARAMS.leafHeightClearance;
   const sw = Math.max(W, H) * 0.0015;
   return (
     <svg viewBox={`${-pad} ${-pad * 0.6} ${W + pad * 1.6} ${H + pad * 1.6}`} className="h-full w-full p-4">
@@ -182,7 +187,7 @@ function WindowSvg({ cfg, res, showDims }: { cfg: WindowConfig; res: CalcResult;
       <rect x={0} y={0} width={W} height={H} className="fill-alu stroke-alu-dark" strokeWidth={sw * 2} />
       <rect x={F} y={F} width={W - 2 * F} height={H - 2 * F} className="fill-background stroke-alu-dark" strokeWidth={sw} />
       {/* Vidrios */}
-      {res.glass.map((g, i) => <rect key={i} x={g.x + DEMO_PARAMS.glassBite} y={g.y + DEMO_PARAMS.glassBite} width={g.w - 2 * DEMO_PARAMS.glassBite} height={g.h - 2 * DEMO_PARAMS.glassBite} className="fill-glass" />)}
+      {res.glass.map((g, i) => <rect key={i} x={g.x + bite} y={g.y + bite} width={g.w - 2 * bite} height={g.h - 2 * bite} className="fill-glass" />)}
       {/* Hojas */}
       {cfg.model !== "fixed" && res.leaves.map((l, i) => (
         <g key={i}>
@@ -202,7 +207,11 @@ function WindowSvg({ cfg, res, showDims }: { cfg: WindowConfig; res: CalcResult;
           <line x1={-pad * 0.6} x2={-pad * 0.1} y1={0} y2={0} className="stroke-dim" strokeWidth={sw} />
           <line x1={-pad * 0.6} x2={-pad * 0.1} y1={H} y2={H} className="stroke-dim" strokeWidth={sw} />
           <text x={-pad * 0.5 - fs * 0.4} y={H / 2} textAnchor="middle" transform={`rotate(-90 ${-pad * 0.5 - fs * 0.4} ${H / 2})`} className="fill-dim">{H} mm</text>
-          {cfg.model !== "fixed" && res.leaves.map((l, i) => (
+          {isA && res.glass.map((g, i) => (
+            <text key={"g" + i} x={g.x + g.w / 2} y={g.y + g.h * 0.62} textAnchor="middle" fontSize={fs * 0.7} className="fill-alu-dark">Vidrio {fmt(g.w, 0)} × {fmt(g.h, 0)}</text>
+          ))}
+          {isA && <text x={W / 2} y={-pad * 0.2} textAnchor="middle" fontSize={fs * 0.75} className="fill-muted-foreground">Cabezal {fmt(W / 2 - 68, 0)} c/u (L/2 − 68)</text>}
+          {!isA && cfg.model !== "fixed" && res.leaves.map((l, i) => (
             <text key={i} x={l.x + l.width / 2} y={-pad * 0.2} textAnchor="middle" fontSize={fs * 0.75} className="fill-muted-foreground">{fmt(l.width, 0)}</text>
           ))}
         </g>
@@ -225,9 +234,14 @@ function PiecesTable({ res }: { res: CalcResult }) {
             <td className="py-1.5 text-primary">{p.code}</td><td className="font-sans">{p.name}</td><td className="text-right">{p.qty}</td><td className="text-right">{fmt(p.length, 1)}</td><td className="text-right text-warning-foreground">{fmt(p.kgm)}*</td><td className="text-right">{fmt(p.unitWeight, 3)}</td><td className="text-right font-medium">{fmt(p.totalWeight, 3)}</td>
           </tr>
         ))}
+        {res.glassCuts?.map((g, i) => (
+          <tr key={"v" + i} className="border-b border-border/60 bg-muted/40">
+            <td className="py-1.5 text-primary">VID</td><td className="font-sans">Vidrio (ancho × alto)</td><td className="text-right">{g.qty}</td><td className="text-right">{fmt(g.w, 0)} × {fmt(g.h, 0)}</td><td /><td /><td className="text-right text-muted-foreground">ver resumen</td>
+          </tr>
+        ))}
         <tr className="font-semibold"><td className="py-2" colSpan={2}>Total aluminio</td><td className="text-right">{res.pieceCount}</td><td className="text-right">{fmt(res.aluminumMeters)} m</td><td /><td /><td className="text-right">{fmt(res.aluminumWeight)}</td></tr>
       </tbody>
-      <tfoot><tr><td colSpan={7} className="pt-2 text-xs text-muted-foreground">* Peso por metro de demostración. Peso total = cantidad × longitud (m) × kg/m.</td></tr></tfoot>
+      <tfoot><tr><td colSpan={7} className="pt-2 text-xs text-muted-foreground">{res.glassCuts ? "* Peso por metro según documento técnico ALUVI (pendiente de validación)." : "* Peso por metro de demostración."} Peso total = cantidad × longitud (m) × kg/m.{res.pending?.map((m) => <div key={m} className="text-warning-foreground">⚠ {m}</div>)}</td></tr></tfoot>
     </table>
   );
 }
@@ -247,6 +261,7 @@ function Summary({ cfg, res, warnings }: { cfg: WindowConfig; res: CalcResult | 
       {res ? <>
         <Row label="Cantidad de piezas" value={`${res.pieceCount}`} />
         <Row label="Metros lineales aluminio" value={`${fmt(res.aluminumMeters)} m`} />
+        {res.glassCuts?.map((g, i) => <Row key={i} label="Vidrios" value={`${g.qty} × ${fmt(g.w, 0)}×${fmt(g.h, 0)} mm`} />)}
         <Row label="Superficie de vidrio" value={`${fmt(res.glassArea, 3)} m²`} />
         <Row label="Peso aluminio" value={`${fmt(res.aluminumWeight)} kg`} est />
         <Row label="Peso vidrio" value={`${fmt(res.glassWeight)} kg`} est />
@@ -263,17 +278,90 @@ function Summary({ cfg, res, warnings }: { cfg: WindowConfig; res: CalcResult | 
   );
 }
 
-function PrintSheet({ cfg, res, warnings }: { cfg: WindowConfig; res: CalcResult | null; warnings: string[] }) {
+function PrintSheet({ cfg, res, warnings, tech }: { cfg: WindowConfig; res: CalcResult | null; warnings: string[]; tech: TechParams }) {
+  const PrintAccessories = ({ cfg }: { cfg: WindowConfig }) => <AccessoriesTable tech={tech} cfg={cfg} />;
   return (
     <div className="print-only p-6">
       <h1 className="text-xl font-bold">ALUVI · Ficha de ventana</h1>
       <p className="text-xs">{new Date().toLocaleString("es-BO")} · DOCUMENTO DE DEMOSTRACIÓN — medidas y pesos estimados con parámetros de ejemplo, no válidos para fabricación.</p>
-      <p className="mt-2 text-sm">{MODELS[cfg.model].label} · {cfg.width} × {cfg.height} mm · {cfg.model === "fixed" ? 1 : cfg.leaves} hoja(s) · {GLASS_TYPES[cfg.glassType]} {cfg.glassThickness} mm</p>
+      <p className="mt-2 text-sm">{MODELS[cfg.model].label}{cfg.model === "aluvi2" && " (PROTOTIPO TÉCNICO PENDIENTE DE VALIDACIÓN)"} · {cfg.width} × {cfg.height} mm · {cfg.model === "fixed" ? 1 : cfg.leaves} hoja(s) · {GLASS_TYPES[cfg.glassType]} {cfg.glassThickness} mm</p>
       {res ? <>
         <div className="my-4 h-[340px]"><WindowSvg cfg={cfg} res={res} showDims /></div>
         <PiecesTable res={res} />
+        {cfg.model === "aluvi2" && <PrintAccessories cfg={cfg} />}
         <p className="mt-3 text-sm">Vidrio: {fmt(res.glassArea, 3)} m² · {fmt(res.glassWeight)} kg (est.) — Aluminio: {fmt(res.aluminumWeight)} kg (est.) — <b>Total estimado: {fmt(res.totalWeight)} kg</b></p>
       </> : <Warnings items={warnings} />}
     </div>
+  );
+}
+
+const isRef = (c: WindowConfig) => c.width === ALUVI_REF_SIZE.width && c.height === ALUVI_REF_SIZE.height;
+
+function AccessoriesTable({ tech, cfg }: { tech: TechParams; cfg: WindowConfig }) {
+  const ref = isRef(cfg);
+  return (
+    <div>
+      <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Accesorios (referencia)</div>
+      <table className="w-full text-sm [&_td]:px-2 [&_th]:px-2">
+        <thead><tr className="border-b border-border text-left text-xs uppercase tracking-wide text-muted-foreground"><th className="py-1.5">Accesorio</th><th className="text-right">Cant. ref. 2000×2000</th><th>Unidad</th><th>Para esta medida</th></tr></thead>
+        <tbody>
+          {tech.accessories.map((a, i) => (
+            <tr key={i} className="border-b border-border/60">
+              <td className="py-1.5">{a.name}{a.note && <span className="text-muted-foreground"> · {a.note}</span>}</td>
+              <td className="text-right font-mono">{a.qty ?? "—"}</td><td>{a.unit}</td>
+              <td className={ref ? "" : "text-warning-foreground"}>{ref && a.qty != null ? `${a.qty} ${a.unit}` : "Pendiente de confirmar"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <p className="mt-1 text-xs text-muted-foreground">Cantidades del documento técnico para 2000 × 2000 mm. No se extrapolan a otras medidas.</p>
+    </div>
+  );
+}
+
+function TechEditor({ tech, setTech, cfg }: { tech: TechParams; setTech: (t: TechParams) => void; cfg: WindowConfig }) {
+  const cell = "w-full rounded-sm border border-input bg-card px-1.5 py-1 font-mono text-xs outline-none focus:border-ring";
+  const num = (v: string) => (v === "" ? null : +v);
+  const upP = (i: number, patch: Partial<TechParams["profiles"][number]>) => setTech({ ...tech, profiles: tech.profiles.map((p, j) => (j === i ? { ...p, ...patch } : p)) });
+  const upA = (i: number, patch: Partial<TechParams["accessories"][number]>) => setTech({ ...tech, accessories: tech.accessories.map((a, j) => (j === i ? { ...a, ...patch } : a)) });
+  const g = tech.glass;
+  return (
+    <Panel title="Parámetros técnicos editables · prototipo" actions={<Btn small onClick={() => setTech(DEFAULT_TECH)}>Valores del documento</Btn>}>
+      <table className="w-full text-sm [&_td]:px-1 [&_th]:px-1">
+        <thead><tr className="text-left text-xs uppercase tracking-wide text-muted-foreground"><th>Código</th><th>Perfil</th><th>kg/m</th><th>Cant.</th><th>Base</th><th>Descuento (mm)</th><th className="text-right">Corte actual</th></tr></thead>
+        <tbody>
+          {tech.profiles.map((p, i) => (
+            <tr key={p.code}>
+              <td className="font-mono text-primary">{p.code}</td><td className="text-xs">{p.name}</td>
+              <td><input type="number" step={0.001} className={cell} value={p.kgm} onChange={(e) => upP(i, { kgm: +e.target.value })} /></td>
+              <td><input type="number" min={0} className={cell} value={p.qty ?? ""} placeholder="?" onChange={(e) => upP(i, { qty: num(e.target.value) })} /></td>
+              <td><select className={cell} value={p.base} onChange={(e) => upP(i, { base: e.target.value as Base })}><option>L</option><option>H</option><option>L/2</option></select></td>
+              <td><input type="number" className={cell} value={p.offset} onChange={(e) => upP(i, { offset: +e.target.value })} /></td>
+              <td className="text-right font-mono text-xs">{p.base} {p.offset >= 0 ? "+" : "−"} {Math.abs(p.offset)} = {fmt(cutLength(p, cfg.width, cfg.height), 0)}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+      <div className="grid grid-cols-4 gap-2 text-xs">
+        <Field label="Vidrios (cant.)"><input type="number" min={1} max={2} className={cell} value={g.qty} onChange={(e) => setTech({ ...tech, glass: { ...g, qty: +e.target.value } })} /></Field>
+        <Field label="Ancho: L ÷"><input type="number" min={1} className={cell} value={g.widthDivisor} onChange={(e) => setTech({ ...tech, glass: { ...g, widthDivisor: +e.target.value || 1 } })} /></Field>
+        <Field label="Ancho: descuento"><input type="number" className={cell} value={g.widthOffset} onChange={(e) => setTech({ ...tech, glass: { ...g, widthOffset: +e.target.value } })} /></Field>
+        <Field label="Alto: H descuento"><input type="number" className={cell} value={g.heightOffset} onChange={(e) => setTech({ ...tech, glass: { ...g, heightOffset: +e.target.value } })} /></Field>
+      </div>
+      <div>
+        <div className="mb-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">Accesorios de referencia</div>
+        <div className="grid gap-1">
+          {tech.accessories.map((a, i) => (
+            <div key={i} className="grid grid-cols-[1fr_80px_80px_1fr] gap-1">
+              <input className={cell} value={a.name} onChange={(e) => upA(i, { name: e.target.value })} />
+              <input type="number" className={cell} value={a.qty ?? ""} placeholder="?" onChange={(e) => upA(i, { qty: num(e.target.value) })} />
+              <input className={cell} value={a.unit} onChange={(e) => upA(i, { unit: e.target.value })} />
+              <input className={cell} value={a.note ?? ""} placeholder="Nota" onChange={(e) => upA(i, { note: e.target.value })} />
+            </div>
+          ))}
+        </div>
+      </div>
+      <p className="text-xs text-warning-foreground">Deja una cantidad vacía si no está confirmada: se mostrará como pendiente en vez de un resultado definitivo.</p>
+    </Panel>
   );
 }
