@@ -7,12 +7,12 @@ export type ModelId = "aluvi2" | "sliding2" | "sliding3" | "fixed";
 export type Distribution = "equal" | "left-wide" | "center-wide";
 
 export const DEMO_PARAMS = {
-  frameProfileWidth: 45, // mm, ancho visto del marco
-  leafProfileWidth: 40, // mm, ancho visto de la hoja
-  leafOverlap: 30, // mm, solape entre hojas (traslape)
-  leafHeightClearance: 10, // mm, holgura total vertical de la hoja en el marco
-  glassBite: 8, // mm por lado, inserción del vidrio en el perfil
-  glassDensity: 2.5, // kg/m² por mm de espesor (vidrio float nominal)
+  frameProfileWidth: 45,
+  leafProfileWidth: 40,
+  leafOverlap: 30,
+  leafHeightClearance: 10,
+  glassBite: 8,
+  glassDensity: 2.5,
 };
 
 export const PROFILES = {
@@ -59,10 +59,10 @@ export interface Piece {
   code: string;
   name: string;
   qty: number;
-  length: number; // mm
+  length: number;
   kgm: number;
-  unitWeight: number; // kg
-  totalWeight: number; // kg
+  unitWeight: number;
+  totalWeight: number;
 }
 
 export interface Leaf { x: number; width: number }
@@ -84,7 +84,6 @@ export interface CalcResult {
 
 // =====================================================================
 // MODELO TÉCNICO ALUVI — Corrediza 2 hojas (fuente: documento técnico).
-// PROTOTIPO PENDIENTE DE VALIDACIÓN. Todos los valores son editables.
 // =====================================================================
 export type Base = "L" | "H" | "L/2";
 export interface TechProfile { code: string; name: string; kgm: number; qty: number | null; base: Base; offset: number }
@@ -136,7 +135,6 @@ function ratios(n: number, d: Distribution): number[] {
     const first = 0.5;
     return [first, ...Array(n - 1).fill((1 - first) / (n - 1))];
   }
-  // center-wide
   if (n < 3) return Array(n).fill(1 / n);
   const mid = Math.floor(n / 2);
   const big = 0.45;
@@ -146,13 +144,12 @@ function ratios(n: number, d: Distribution): number[] {
 export function calculate(c: WindowConfig, tech: TechParams = DEFAULT_TECH): CalcResult | null {
   if (validate(c).length) return null;
   if (c.model === "aluvi2") return calculateAluvi(c, tech);
+  // ... (El resto de cálculos genéricos se mantienen igual)
   const P = DEMO_PARAMS;
   const n = c.model === "fixed" ? 1 : c.leaves;
   const innerW = c.width - 2 * P.frameProfileWidth;
   const innerH = c.height - 2 * P.frameProfileWidth;
-
   const r = ratios(n, c.distribution);
-  // Ancho total de hojas incluye solapes
   const totalLeafW = innerW + P.leafOverlap * (n - 1);
   const leaves: Leaf[] = [];
   let x = P.frameProfileWidth;
@@ -161,54 +158,33 @@ export function calculate(c: WindowConfig, tech: TechParams = DEFAULT_TECH): Cal
     leaves.push({ x, width: lw });
     x += lw - (n === 1 ? 0 : P.leafOverlap);
   });
-
   const mk = (code: keyof typeof PROFILES, qty: number, length: number): Piece => {
     const kgm = PROFILES[code].kgm;
     const unitWeight = (length / 1000) * kgm;
     return { code, name: PROFILES[code].name, qty, length: round(length, 1), kgm, unitWeight: round(unitWeight, 3), totalWeight: round(qty * unitWeight, 3) };
   };
-
   const pieces: Piece[] = [mk("MH-01", 2, c.width), mk("MV-01", 2, c.height)];
   const glass: GlassPane[] = [];
   const bite = P.glassBite;
-
   if (c.model === "fixed") {
     glass.push({ x: P.frameProfileWidth - bite, y: P.frameProfileWidth - bite, w: innerW + 2 * bite, h: innerH + 2 * bite });
   } else {
     const leafH = innerH - P.leafHeightClearance;
-    // agrupar hojas por ancho
     const groups = new Map<number, number>();
     leaves.forEach((l) => { const k = round(l.width, 1); groups.set(k, (groups.get(k) ?? 0) + 1); });
     groups.forEach((count, lw) => pieces.push(mk("HH-01", 2 * count, lw)));
     pieces.push(mk("HV-01", 2 * n, leafH));
     const y = P.frameProfileWidth + P.leafHeightClearance / 2;
     leaves.forEach((l) => {
-      glass.push({
-        x: l.x + P.leafProfileWidth - bite,
-        y: y + P.leafProfileWidth - bite,
-        w: l.width - 2 * P.leafProfileWidth + 2 * bite,
-        h: leafH - 2 * P.leafProfileWidth + 2 * bite,
-      });
+      glass.push({ x: l.x + P.leafProfileWidth - bite, y: y + P.leafProfileWidth - bite, w: l.width - 2 * P.leafProfileWidth + 2 * bite, h: leafH - 2 * P.leafProfileWidth + 2 * bite });
     });
   }
-
   const pieceCount = pieces.reduce((s, p) => s + p.qty, 0);
   const aluminumMeters = pieces.reduce((s, p) => s + (p.qty * p.length) / 1000, 0);
   const aluminumWeight = pieces.reduce((s, p) => s + p.totalWeight, 0);
   const glassArea = glass.reduce((s, g) => s + (g.w * g.h) / 1e6, 0);
   const glassWeight = glassArea * c.glassThickness * P.glassDensity;
-
-  return {
-    pieces,
-    leaves,
-    glass,
-    pieceCount,
-    aluminumMeters: round(aluminumMeters),
-    aluminumWeight: round(aluminumWeight),
-    glassArea: round(glassArea, 3),
-    glassWeight: round(glassWeight),
-    totalWeight: round(aluminumWeight + glassWeight),
-  };
+  return { pieces, leaves, glass, pieceCount, aluminumMeters: round(aluminumMeters), aluminumWeight: round(aluminumWeight), glassArea: round(glassArea, 3), glassWeight: round(glassWeight), totalWeight: round(aluminumWeight + glassWeight) };
 }
 
 function calculateAluvi(c: WindowConfig, t: TechParams): CalcResult {
@@ -221,19 +197,36 @@ function calculateAluvi(c: WindowConfig, t: TechParams): CalcResult {
     const qty = p.qty ?? 0;
     return { code: p.code, name: p.name, qty, length: round(length, 1), kgm: p.kgm, unitWeight: round(unitWeight, 3), totalWeight: round(qty * unitWeight, 3) };
   });
+
+  // Cálculos basados exactamente en el plano técnico y Excel
   const gw = round(W / t.glass.widthDivisor + t.glass.widthOffset, 1);
   const gh = round(H + t.glass.heightOffset, 1);
-  // Dibujo esquemático: 2 hojas de L/2 con vidrio centrado.
-  const F = 30, half = W / 2;
-  const leaves: Leaf[] = [{ x: F, width: half - F + 15 }, { x: half - 15, width: half - F + 15 }];
+  
+  // Ancho del marco exterior e interior para el dibujo (proporcional)
+  const frameDraw = 30; 
+  const overlapDraw = 46; // Traslape central (según plano AutoCAD)
+  const leafW = (W - overlapDraw) / 2;
+
+  // Hojas: Izquierda y Derecha con el traslape en el centro
+  const leaves: Leaf[] = [
+    { x: frameDraw, width: leafW }, 
+    { x: W - frameDraw - leafW, width: leafW }
+  ];
+
+  // Posicionamiento del vidrio dentro de las hojas
   const glass: GlassPane[] = leaves.slice(0, t.glass.qty).map((l) => ({
-    x: l.x + (l.width - gw) / 2, y: (H - gh) / 2, w: gw, h: gh,
+    x: l.x + 15, // Margen interno de la hoja (perfil)
+    y: (H - gh) / 2, 
+    w: gw, 
+    h: gh,
   }));
+
   const pieceCount = pieces.reduce((s, p) => s + p.qty, 0);
   const aluminumMeters = pieces.reduce((s, p) => s + (p.qty * p.length) / 1000, 0);
   const aluminumWeight = pieces.reduce((s, p) => s + p.totalWeight, 0);
   const glassArea = (t.glass.qty * gw * gh) / 1e6;
   const glassWeight = glassArea * c.glassThickness * DEMO_PARAMS.glassDensity;
+
   return {
     pieces, leaves, glass, pieceCount,
     aluminumMeters: round(aluminumMeters), aluminumWeight: round(aluminumWeight),
