@@ -1,5 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useMemo, useState } from "react";
+import { useId, useMemo, useState } from "react";
+import { Button } from "@/components/ui/button";
 import {
   calculate, validate, DEFAULT_CONFIG, DEFAULT_TECH, ALUVI_REF_SIZE, cutLength, DEMO_PARAMS, GLASS_TYPES, MODELS, PROFILES,
   type CalcResult, type TechParams, type Base, type WindowConfig, type ModelId, type Distribution,
@@ -12,6 +13,8 @@ export const Route = createFileRoute("/")({
       { name: "description", content: "Demo para diseñar ventanas de aluminio y calcular despiece, materiales y peso estimado." },
       { property: "og:title", content: "ALUVI · Diseñador de ventanas" },
       { property: "og:description", content: "Configura, visualiza y calcula ventanas de aluminio en una sola pantalla." },
+      { property: "og:type", content: "website" },
+      { name: "twitter:card", content: "summary_large_image" },
     ],
   }),
   component: Index,
@@ -28,6 +31,7 @@ function Index() {
   const supported = cfg.leaves === 2;
   const warnings = supported ? validate(cfg) : [`No hay reglas técnicas documentadas para ${cfg.leaves} hojas. Pendiente de validación: solo está disponible el modelo de 2 hojas del documento ALUVI.`];
   const res = useMemo(() => (supported ? calculate(cfg, tech) : null), [cfg, supported, tech]);
+  const updateForm = (next: typeof form) => { setForm(next); setCfg({ ...DEFAULT_CONFIG, ...next }); setGenAt(new Date()); };
   const generate = () => { setCfg({ ...DEFAULT_CONFIG, leaves: form.leaves, width: form.width, height: form.height }); setGenAt(new Date()); };
 
   return (
@@ -47,27 +51,27 @@ function Index() {
         ⚠ <b>Prototipo técnico pendiente de validación.</b> Descuentos, cantidades y pesos por metro tomados del documento técnico ALUVI (corrediza 2 hojas). Confirmar antes de fabricar.
       </div>
 
-      <main className="no-print grid grid-cols-[280px_1fr_340px] gap-4 p-4">
+      <main className="no-print grid grid-cols-1 lg:grid-cols-[240px_minmax(0,1fr)] 2xl:grid-cols-[240px_minmax(0,1fr)_280px] gap-4 p-4">
         <Panel title="Datos de la ventana">
           <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); generate(); }}>
             <Field label="Cantidad de hojas">
-              <select value={form.leaves} onChange={(e) => setForm({ ...form, leaves: +e.target.value })} className={inputCls}>
+              <select value={form.leaves} onChange={(e) => updateForm({ ...form, leaves: +e.target.value })} className={inputCls}>
                 <option value={2}>2 hojas (documentado)</option>
                 <option value={3}>3 hojas (pendiente)</option>
                 <option value={4}>4 hojas (pendiente)</option>
               </select>
             </Field>
-            <Field label="Ancho (mm)"><NumInput value={form.width} onChange={(v) => setForm({ ...form, width: v })} /></Field>
-            <Field label="Alto (mm)"><NumInput value={form.height} onChange={(v) => setForm({ ...form, height: v })} /></Field>
-            <button type="submit" className="w-full rounded-sm border border-primary bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90">Generar ventana</button>
+            <Field label="Ancho (mm)"><NumInput value={form.width} onChange={(v) => updateForm({ ...form, width: v })} /></Field>
+            <Field label="Alto (mm)"><NumInput value={form.height} onChange={(v) => updateForm({ ...form, height: v })} /></Field>
+            <Button type="submit" className="w-full">Generar ventana</Button>
           </form>
           <p className="text-xs text-muted-foreground">Generado {genAt.toLocaleTimeString("es-BO")} · {cfg.leaves} hojas · {cfg.width} × {cfg.height} mm</p>
         </Panel>
 
         <div className="flex min-w-0 flex-col gap-4">
           <Panel title="Plano técnico">
-            <div className="grid h-[440px] place-items-center rounded-sm bg-muted">
-              {res ? <WindowSvg cfg={cfg} res={res} showDims /> : <Warnings items={warnings} />}
+            <div className="technical-plan overflow-x-auto rounded-sm bg-muted">
+              {validate(cfg).length === 0 ? <WindowSvg cfg={cfg} res={res} showDims /> : <Warnings items={warnings} />}
             </div>
           </Panel>
           <Panel title="Lista de cortes, vidrios y accesorios">
@@ -94,7 +98,7 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   return <label className="block"><span className="mb-1 block text-xs font-medium uppercase tracking-wide text-muted-foreground">{label}</span>{children}</label>;
 }
 function Btn({ children, onClick, primary, small }: { children: React.ReactNode; onClick: () => void; primary?: boolean; small?: boolean }) {
-  return <button onClick={onClick} className={`rounded-sm border font-medium transition ${small ? "px-2 py-1 text-xs" : "px-3 py-1.5 text-sm"} ${primary ? "border-primary bg-primary text-primary-foreground hover:opacity-90" : small ? "border-border bg-card text-foreground hover:bg-muted" : "border-sidebar-border bg-sidebar-accent text-sidebar-accent-foreground hover:bg-primary"}`}>{children}</button>;
+  return <Button onClick={onClick} className={`rounded-sm border font-medium transition ${small ? "px-2 py-1 text-xs" : "px-3 py-1.5 text-sm"} ${primary ? "border-primary bg-primary text-primary-foreground hover:opacity-90" : small ? "border-border bg-card text-foreground hover:bg-muted" : "border-sidebar-border bg-sidebar-accent text-sidebar-accent-foreground hover:bg-primary"}`}>{children}</Button>;
 }
 function Panel({ title, children, actions }: { title: string; children: React.ReactNode; actions?: React.ReactNode }) {
   return (
@@ -102,7 +106,7 @@ function Panel({ title, children, actions }: { title: string; children: React.Re
       <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
         <h2 className="text-xs font-semibold uppercase tracking-widest text-muted-foreground">{title}</h2>{actions}
       </div>
-      <div className="space-y-4 p-4">{children}</div>
+      <div className="space-y-4 overflow-x-auto p-4">{children}</div>
     </section>
   );
 }
@@ -115,54 +119,96 @@ function Warnings({ items }: { items: string[] }) {
   );
 }
 
-function WindowSvg({ cfg, res, showDims }: { cfg: WindowConfig; res: CalcResult; showDims: boolean }) {
+function WindowSvg({ cfg, res, showDims }: { cfg: WindowConfig; res: CalcResult | null; showDims: boolean }) {
+  const marker = useId().replace(/:/g, "");
   const { width: W, height: H } = cfg;
-  const pad = Math.max(W, H) * 0.12;
-  const isA = cfg.model === "aluvi2";
-  const F = isA ? 30 : DEMO_PARAMS.frameProfileWidth, L = isA ? 50 : DEMO_PARAMS.leafProfileWidth;
-  const bite = isA ? 0 : DEMO_PARAMS.glassBite;
-  const fs = Math.max(W, H) * 0.028;
-  const leafY = isA ? F : F + DEMO_PARAMS.leafHeightClearance / 2;
-  const leafH = isA ? H - 2 * F : H - 2 * F - DEMO_PARAMS.leafHeightClearance;
-  const sw = Math.max(W, H) * 0.0015;
+  const scale = Math.min(500 / W, 460 / H);
+  const dw = W * scale, dh = H * scale;
+  const ox = 550 - dw / 2, oy = 170 + (460 - dh) / 2;
+  const frame = 30, band = 50; // Visible bands only: catalogue has no profile section dimensions.
+  const known = cfg.leaves === 2 && res !== null;
+  const leaves = known ? res.leaves : Array.from({ length: cfg.leaves }, (_, i) => ({ x: frame + i * (W - frame * 2) / cfg.leaves, width: (W - frame * 2) / cfg.leaves }));
+  const leafY = frame, leafH = H - frame * 2;
+  const label = (code: string) => {
+    const piece = res?.pieces.find((p) => p.code === code);
+    return piece ? `${code} · ${fmt(piece.length, 1)} mm` : `${code} · corte pendiente de validar`;
+  };
+  const annotations: { id: string; code: string; name: string; x: number; y: number; side: "left" | "right" }[] = [
+    { id: "M1", code: "7621", name: "Riel superior", x: W / 2, y: frame / 2, side: "left" },
+    { id: "M2", code: "7622", name: "Riel inferior", x: W / 2, y: H - frame / 2, side: "right" },
+    { id: "M3", code: "7623", name: "Jamba izquierda", x: frame / 2, y: H / 2, side: "left" },
+    { id: "M4", code: "7623", name: "Jamba derecha", x: W - frame / 2, y: H / 2, side: "right" },
+  ];
+  if (known) leaves.forEach((l, i) => {
+    const side = i === 0 ? "left" : "right";
+    annotations.push(
+      { id: `H${i + 1}A`, code: "7624", name: `Hoja ${i + 1} · cabezal`, x: l.x + l.width / 2, y: leafY + band / 2, side },
+      { id: `H${i + 1}B`, code: i === 0 ? "7625" : "7625A", name: i === 0 ? "Zócalo pequeño (*)" : "Zócalo grande (*)", x: l.x + l.width / 2, y: leafY + leafH - band / 2, side },
+      { id: `H${i + 1}C`, code: "7626", name: `Hoja ${i + 1} · pierna`, x: i === 0 ? l.x + band / 2 : l.x + l.width - band / 2, y: H * 0.38, side },
+      { id: `H${i + 1}D`, code: "7627", name: `Hoja ${i + 1} · enganche`, x: i === 0 ? l.x + l.width - band / 2 : l.x + band / 2, y: H * 0.68, side },
+    );
+  });
+  const rect = (x: number, y: number, w: number, h: number, key: string) => <rect key={key} x={x} y={y} width={w} height={h} className="fill-alu stroke-alu-dark" strokeWidth={1.2 / scale} />;
+  const dim = (x1: number, y1: number, x2: number, y2: number) => <line x1={x1} y1={y1} x2={x2} y2={y2} className="stroke-dim" strokeWidth={1} markerStart={`url(#${marker})`} markerEnd={`url(#${marker})`} />;
   return (
-    <svg viewBox={`${-pad} ${-pad * 0.6} ${W + pad * 1.6} ${H + pad * 1.6}`} className="h-full w-full p-4">
-      <defs>
-        <marker id="arr" viewBox="0 0 10 10" refX="5" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" className="fill-dim" /></marker>
-      </defs>
-      {/* Marco */}
-      <rect x={0} y={0} width={W} height={H} className="fill-alu stroke-alu-dark" strokeWidth={sw * 2} />
-      <rect x={F} y={F} width={W - 2 * F} height={H - 2 * F} className="fill-background stroke-alu-dark" strokeWidth={sw} />
-      {/* Vidrios */}
-      {res.glass.map((g, i) => <rect key={i} x={g.x + bite} y={g.y + bite} width={g.w - 2 * bite} height={g.h - 2 * bite} className="fill-glass" />)}
-      {/* Hojas */}
-      {cfg.model !== "fixed" && res.leaves.map((l, i) => (
-        <g key={i}>
-          <path d={`M${l.x},${leafY} h${l.width} v${leafH} h${-l.width} z M${l.x + L},${leafY + L} v${leafH - 2 * L} h${l.width - 2 * L} v${-(leafH - 2 * L)} z`} fillRule="evenodd" className="fill-alu stroke-alu-dark" strokeWidth={sw} opacity={i % 2 ? 1 : 0.92} />
-          <line x1={l.x + l.width * 0.3} x2={l.x + l.width * 0.7} y1={leafY + leafH / 2} y2={leafY + leafH / 2} className="stroke-alu-dark" strokeWidth={sw * 1.5} markerEnd="url(#arr)" markerStart="url(#arr)" opacity={0.5} />
-          <text x={l.x + l.width / 2} y={leafY + L + fs * 1.4} textAnchor="middle" fontSize={fs * 0.8} className="fill-alu-dark font-mono">H{i + 1}</text>
-        </g>
-      ))}
-      {cfg.model === "fixed" && <text x={W / 2} y={H / 2} textAnchor="middle" fontSize={fs} className="fill-alu-dark font-mono">FIJO</text>}
-      {showDims && (
-        <g className="font-mono" fontSize={fs}>
-          <line x1={0} x2={W} y1={H + pad * 0.5} y2={H + pad * 0.5} className="stroke-dim" strokeWidth={sw} markerStart="url(#arr)" markerEnd="url(#arr)" />
-          <line x1={0} x2={0} y1={H + pad * 0.1} y2={H + pad * 0.6} className="stroke-dim" strokeWidth={sw} />
-          <line x1={W} x2={W} y1={H + pad * 0.1} y2={H + pad * 0.6} className="stroke-dim" strokeWidth={sw} />
-          <text x={W / 2} y={H + pad * 0.5 - fs * 0.4} textAnchor="middle" className="fill-dim">{W} mm</text>
-          <line x1={-pad * 0.5} x2={-pad * 0.5} y1={0} y2={H} className="stroke-dim" strokeWidth={sw} markerStart="url(#arr)" markerEnd="url(#arr)" />
-          <line x1={-pad * 0.6} x2={-pad * 0.1} y1={0} y2={0} className="stroke-dim" strokeWidth={sw} />
-          <line x1={-pad * 0.6} x2={-pad * 0.1} y1={H} y2={H} className="stroke-dim" strokeWidth={sw} />
-          <text x={-pad * 0.5 - fs * 0.4} y={H / 2} textAnchor="middle" transform={`rotate(-90 ${-pad * 0.5 - fs * 0.4} ${H / 2})`} className="fill-dim">{H} mm</text>
-          {isA && res.glass.map((g, i) => (
-            <text key={"g" + i} x={g.x + g.w / 2} y={g.y + g.h * 0.62} textAnchor="middle" fontSize={fs * 0.7} className="fill-alu-dark">Vidrio {fmt(g.w, 0)} × {fmt(g.h, 0)}</text>
-          ))}
-          {isA && <text x={W / 2} y={-pad * 0.2} textAnchor="middle" fontSize={fs * 0.75} className="fill-muted-foreground">Cabezal {fmt(W / 2 - 68, 0)} c/u (L/2 − 68)</text>}
-          {!isA && cfg.model !== "fixed" && res.leaves.map((l, i) => (
-            <text key={i} x={l.x + l.width / 2} y={-pad * 0.2} textAnchor="middle" fontSize={fs * 0.75} className="fill-muted-foreground">{fmt(l.width, 0)}</text>
-          ))}
-        </g>
-      )}
+    <svg viewBox="0 0 1100 830" role="img" aria-label={`Plano técnico de ventana de ${cfg.leaves} hojas, ${W} por ${H} milímetros`} className="block w-full min-w-[720px] font-mono">
+      <title>ALUVI · Perfiles, vidrios y cotas · {W} × {H} mm</title>
+      <defs><marker id={marker} viewBox="0 0 10 10" refX="5" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L10,5 L0,9" className="fill-none stroke-dim" strokeWidth="1.5" /></marker></defs>
+      <text x="30" y="34" fontSize="19" className="fill-foreground font-semibold">ALUVI · PLANO DE PERFILES</text>
+      <text x="30" y="60" fontSize="14" className="fill-muted-foreground">{cfg.leaves} hojas · {W} × {H} mm · Vista frontal</text>
+      <text x="1070" y="34" textAnchor="end" fontSize="13" className="fill-warning-foreground">PROTOTIPO · VALIDAR ANTES DE FABRICAR</text>
+      <g transform={`translate(${ox} ${oy}) scale(${scale})`}>
+        <rect width={W} height={H} className="fill-background" />
+        {rect(0, 0, frame, H, "j1")}{rect(W - frame, 0, frame, H, "j2")}
+        {rect(frame, 0, W - frame * 2, frame, "rt")}{rect(frame, H - frame, W - frame * 2, frame, "rb")}
+        {leaves.map((l, i) => <g key={i}>
+          <rect x={l.x} y={leafY} width={l.width} height={leafH} className="fill-glass" />
+          {known && res.glass[i] && <rect x={res.glass[i].x} y={res.glass[i].y} width={res.glass[i].w} height={res.glass[i].h} className="fill-glass stroke-dim" strokeWidth={0.8 / scale} strokeDasharray={`${4 / scale} ${3 / scale}`} />}
+          {rect(l.x, leafY, band, leafH, `v${i}a`)}
+          {rect(l.x + l.width - band, leafY, band, leafH, `v${i}b`)}
+          {rect(l.x + band, leafY, l.width - band * 2, band, `t${i}`)}
+          {rect(l.x + band, leafY + leafH - band, l.width - band * 2, band, `b${i}`)}
+          {/* Separate members meet with butt edges. No unsupported joint machining is dimensioned. */}
+          <path d={`M${l.x + band / 2},${leafY + band} v${leafH - band * 2} M${l.x + l.width - band / 2},${leafY + band} v${leafH - band * 2}`} className="fill-none stroke-alu-dark" strokeWidth={0.7 / scale} />
+        </g>)}
+      </g>
+      {leaves.map((l, i) => {
+        const x = ox + (l.x + l.width / 2) * scale;
+        const glass = known ? res.glass[i] : null;
+        return <g key={`glass${i}`} className="fill-foreground" textAnchor="middle" fontSize="14">
+          <text x={x} y={oy + dh * 0.47} className="font-semibold">HOJA {i + 1}</text>
+          <text x={x} y={oy + dh * 0.47 + 23}>Vidrio {glass ? `${fmt(glass.w, 1)}` : "pendiente"}</text>
+          {glass && <text x={x} y={oy + dh * 0.47 + 44}>× {fmt(glass.h, 1)} mm</text>}
+        </g>;
+      })}
+      {(["left", "right"] as const).map((side) => annotations.filter((a) => a.side === side).map((a, i) => {
+        const y = 155 + i * 82, left = side === "left";
+        const tx = left ? 28 : 855, edge = left ? 248 : 852;
+        const px = ox + a.x * scale, py = oy + a.y * scale;
+        return <g key={a.id} fontSize="14">
+          <path d={`M${px},${py} L${left ? ox - 12 - i * 3 : ox + dw + 12 + i * 3},${py} L${edge},${y + 17}`} className="fill-none stroke-muted-foreground" strokeWidth="0.8" />
+          <circle cx={px} cy={py} r="3" className="fill-primary" />
+          <rect x={tx - 5} y={y - 16} width="222" height="65" className="fill-muted" />
+          <text x={tx} y={y} className="fill-primary font-semibold">{a.id} · {known ? a.code : "Perfil pendiente"}</text>
+          <text x={tx} y={y + 21} className="fill-foreground">{a.name}</text>
+          <text x={tx} y={y + 42} className={known ? "fill-foreground" : "fill-warning-foreground"}>{known ? label(a.code).split(" · ")[1] : "Corte pendiente de validar"}</text>
+        </g>;
+      }))}
+      {showDims && <g className="fill-dim" fontSize="15">
+        {dim(ox, 114, ox + dw, 114)}
+        <path d={`M${ox},105 V${oy - 6} M${ox + dw},105 V${oy - 6}`} className="stroke-dim" strokeWidth="0.8" />
+        <text x="550" y="101" textAnchor="middle">ANCHO TOTAL {W} mm</text>
+        {dim(ox - 42, oy, ox - 42, oy + dh)}
+        <path d={`M${ox - 50},${oy} H${ox - 6} M${ox - 50},${oy + dh} H${ox - 6}`} className="stroke-dim" strokeWidth="0.8" />
+        <text transform={`translate(${ox - 53} ${oy + dh / 2}) rotate(-90)`} textAnchor="middle">ALTO TOTAL {H} mm</text>
+      </g>}
+      {!known && <text x="550" y="690" textAnchor="middle" fontSize="15" className="fill-warning-foreground">Esquema de {cfg.leaves} hojas · sin reglas documentadas de fabricación.</text>}
+      <g fontSize="14" className="fill-muted-foreground">
+        <text x="30" y="737">Cortes: etiquetas tomadas de la misma lista de piezas. Vidrios: medidas de corte (trazo discontinuo).</text>
+        <text x="30" y="761">Ancho total de cada hoja, secciones y mecanizado de uniones: pendientes de validar.</text>
+        <text x="30" y="785">(*) Ubicación de zócalos 7625 / 7625A: esquemática, pendiente de confirmar en el documento.</text>
+        <text x="30" y="809">Proporción exterior conservada; anchos visibles de perfiles y encuentros esquemáticos, no a escala de sección.</text>
+      </g>
     </svg>
   );
 }
@@ -229,11 +275,11 @@ function PrintSheet({ cfg, res, warnings, tech }: { cfg: WindowConfig; res: Calc
       <p className="text-xs">{new Date().toLocaleString("es-BO")} · PROTOTIPO TÉCNICO PENDIENTE DE VALIDACIÓN — confirmar fórmulas antes de fabricar.</p>
       <p className="mt-2 text-sm">{MODELS[cfg.model].label}{cfg.model === "aluvi2" && " (PROTOTIPO TÉCNICO PENDIENTE DE VALIDACIÓN)"} · {cfg.width} × {cfg.height} mm · {cfg.leaves} hojas</p>
       {res ? <>
-        <div className="my-4 h-[340px]"><WindowSvg cfg={cfg} res={res} showDims /></div>
+        <div className="my-4 technical-plan-print"><WindowSvg cfg={cfg} res={res} showDims /></div>
         <PiecesTable res={res} />
         {cfg.model === "aluvi2" && <PrintAccessories cfg={cfg} />}
         <p className="mt-3 text-sm">Vidrio: {fmt(res.glassArea, 3)} m² (peso pendiente de validación) — <b>Peso aluminio: {fmt(res.aluminumWeight)} kg</b></p>
-      </> : <Warnings items={warnings} />}
+      </> : <><Warnings items={warnings} />{validate(cfg).length === 0 && <WindowSvg cfg={cfg} res={null} showDims />}</>}
     </div>
   );
 }
