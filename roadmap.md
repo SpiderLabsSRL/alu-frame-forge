@@ -1,0 +1,2 @@
+- [x] Modelo ALUVI corrediza 2 hojas desde PDF
+- [x] Flujo simplificado: hojas + ancho + alto → Generar ventana → plano, cortes, vidrios, accesorios, peso, ficha

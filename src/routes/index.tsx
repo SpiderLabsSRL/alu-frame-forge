@@ -21,17 +21,14 @@ const EMPTY: WindowConfig = { ...DEFAULT_CONFIG, width: 0, height: 0, glassThick
 const fmt = (n: number, d = 2) => n.toLocaleString("es-BO", { minimumFractionDigits: d, maximumFractionDigits: d });
 
 function Index() {
+  const [form, setForm] = useState({ leaves: 2, width: 2000, height: 2000 });
   const [cfg, setCfg] = useState<WindowConfig>(DEFAULT_CONFIG);
-  const [showDims, setShowDims] = useState(true);
-  const [tick, setTick] = useState(0);
-  const [lastCalc, setLastCalc] = useState(() => new Date());
-  const [tech, setTech] = useState<TechParams>(DEFAULT_TECH);
-  const warnings = validate(cfg);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  const res = useMemo(() => calculate(cfg, tech), [cfg, tech, tick]);
-
-  const set = <K extends keyof WindowConfig>(k: K, v: WindowConfig[K]) => { setCfg((c) => ({ ...c, [k]: v })); setLastCalc(new Date()); };
-  const setModel = (m: ModelId) => { setCfg((c) => ({ ...c, model: m, leaves: MODELS[m].leaves, distribution: "equal" })); setLastCalc(new Date()); };
+  const [genAt, setGenAt] = useState(() => new Date());
+  const tech = DEFAULT_TECH;
+  const supported = cfg.leaves === 2;
+  const warnings = supported ? validate(cfg) : [`No hay reglas técnicas documentadas para ${cfg.leaves} hojas. Pendiente de validación: solo está disponible el modelo de 2 hojas del documento ALUVI.`];
+  const res = useMemo(() => (supported ? calculate(cfg, tech) : null), [cfg, supported, tech]);
+  const generate = () => { setCfg({ ...DEFAULT_CONFIG, leaves: form.leaves, width: form.width, height: form.height }); setGenAt(new Date()); };
 
   return (
     <div className="min-h-screen">
@@ -40,94 +37,44 @@ function Index() {
           <div className="grid h-8 w-8 place-items-center rounded-sm bg-primary font-mono text-sm font-bold text-primary-foreground">AV</div>
           <div>
             <div className="text-sm font-semibold tracking-wide">ALUVI · Diseñador de ventanas</div>
-            <div className="text-xs opacity-60">Demo técnica · valores de demostración</div>
+            <div className="text-xs opacity-60">Prototipo técnico pendiente de validación</div>
           </div>
         </div>
-        <div className="flex gap-2">
-          <Btn onClick={() => { setCfg(EMPTY); setLastCalc(new Date()); }}>Nueva ventana</Btn>
-          <Btn onClick={() => { setTick((t) => t + 1); setLastCalc(new Date()); }}>Recalcular</Btn>
-          <Btn onClick={() => { setCfg(DEFAULT_CONFIG); setTech(DEFAULT_TECH); setShowDims(true); setLastCalc(new Date()); }}>Restablecer</Btn>
-          <Btn primary onClick={() => window.print()}>Imprimir ficha</Btn>
-        </div>
+        <Btn primary onClick={() => window.print()}>Imprimir / Guardar PDF</Btn>
       </header>
 
       <div className="no-print border-b border-warning bg-warning-soft px-6 py-2 text-xs text-warning-foreground">
-        {cfg.model === "aluvi2" ? <>⚠ <b>Prototipo técnico pendiente de validación.</b> Descuentos, cantidades y pesos por metro tomados del documento técnico ALUVI; deben confirmarse antes de fabricar. Peso del vidrio estimado.</> : <>⚠ Las fórmulas de corte, pesos por metro y densidad del vidrio son <b>parámetros de demostración</b>. Los resultados son estimaciones hasta introducir las fichas técnicas oficiales de ALUVI.</>}
+        ⚠ <b>Prototipo técnico pendiente de validación.</b> Descuentos, cantidades y pesos por metro tomados del documento técnico ALUVI (corrediza 2 hojas). Confirmar antes de fabricar.
       </div>
 
-      <main className="no-print grid grid-cols-[300px_1fr_340px] gap-4 p-4">
-        {/* Izquierda */}
-        <Panel title="Configuración">
-          <Field label="Modelo">
-            <div className="grid gap-1">
-              {(Object.keys(MODELS) as ModelId[]).map((m) => (
-                <button key={m} onClick={() => setModel(m)}
-                  className={`rounded-sm border px-3 py-2 text-left text-sm transition ${cfg.model === m ? "border-primary bg-accent font-medium text-accent-foreground" : "border-border bg-card hover:bg-muted"}`}>
-                  {MODELS[m].label}
-                </button>
-              ))}
-            </div>
-          </Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Ancho (mm)"><NumInput value={cfg.width} onChange={(v) => set("width", v)} /></Field>
-            <Field label="Alto (mm)"><NumInput value={cfg.height} onChange={(v) => set("height", v)} /></Field>
-          </div>
-          <Field label="Cantidad de hojas">
-            <select disabled={cfg.model === "fixed" || cfg.model === "aluvi2"} value={cfg.model === "fixed" ? 1 : cfg.leaves} onChange={(e) => set("leaves", +e.target.value)} className={inputCls}>
-              {cfg.model === "fixed" ? <option value={1}>1 (fija)</option> : [2, 3, 4].map((n) => <option key={n} value={n}>{n}</option>)}
-            </select>
-          </Field>
-          <Field label="Distribución de hojas">
-            <select disabled={cfg.model === "fixed" || cfg.model === "aluvi2"} value={cfg.distribution} onChange={(e) => set("distribution", e.target.value as Distribution)} className={inputCls}>
-              <option value="equal">Hojas iguales</option>
-              <option value="left-wide">Hoja izquierda mayor</option>
-              {cfg.leaves >= 3 && <option value="center-wide">Hoja central mayor</option>}
-            </select>
-          </Field>
-          <Field label="Tipo de vidrio">
-            <select value={cfg.glassType} onChange={(e) => set("glassType", e.target.value as WindowConfig["glassType"])} className={inputCls}>
-              {Object.entries(GLASS_TYPES).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
-            </select>
-          </Field>
-          <Field label="Espesor del vidrio (mm)">
-            <select value={cfg.glassThickness} onChange={(e) => set("glassThickness", +e.target.value)} className={inputCls}>
-              <option value={0}>— Seleccionar —</option>
-              {[4, 5, 6, 8, 10].map((t) => <option key={t} value={t}>{t} mm</option>)}
-            </select>
-          </Field>
-          <details className="rounded-sm border border-dashed border-warning bg-warning-soft p-3 text-xs text-warning-foreground">
-            <summary className="cursor-pointer font-semibold">Parámetros demo</summary>
-            <ul className="mt-2 space-y-1 font-mono">
-              <li>Marco visto: {DEMO_PARAMS.frameProfileWidth} mm</li>
-              <li>Hoja visto: {DEMO_PARAMS.leafProfileWidth} mm</li>
-              <li>Solape hojas: {DEMO_PARAMS.leafOverlap} mm</li>
-              <li>Holgura vertical: {DEMO_PARAMS.leafHeightClearance} mm</li>
-              <li>Inserción vidrio: {DEMO_PARAMS.glassBite} mm/lado</li>
-              <li>Vidrio: {DEMO_PARAMS.glassDensity} kg/m²·mm</li>
-              {Object.entries(PROFILES).map(([c, p]) => <li key={c}>{c}: {p.kgm} kg/m</li>)}
-            </ul>
-          </details>
+      <main className="no-print grid grid-cols-[280px_1fr_340px] gap-4 p-4">
+        <Panel title="Datos de la ventana">
+          <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); generate(); }}>
+            <Field label="Cantidad de hojas">
+              <select value={form.leaves} onChange={(e) => setForm({ ...form, leaves: +e.target.value })} className={inputCls}>
+                <option value={2}>2 hojas (documentado)</option>
+                <option value={3}>3 hojas (pendiente)</option>
+                <option value={4}>4 hojas (pendiente)</option>
+              </select>
+            </Field>
+            <Field label="Ancho (mm)"><NumInput value={form.width} onChange={(v) => setForm({ ...form, width: v })} /></Field>
+            <Field label="Alto (mm)"><NumInput value={form.height} onChange={(v) => setForm({ ...form, height: v })} /></Field>
+            <button type="submit" className="w-full rounded-sm border border-primary bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground hover:opacity-90">Generar ventana</button>
+          </form>
+          <p className="text-xs text-muted-foreground">Generado {genAt.toLocaleTimeString("es-BO")} · {cfg.leaves} hojas · {cfg.width} × {cfg.height} mm</p>
         </Panel>
 
-        {/* Centro */}
         <div className="flex min-w-0 flex-col gap-4">
-          <Panel title="Vista frontal" actions={
-            <div className="flex gap-2">
-              <Btn small onClick={() => setShowDims((s) => !s)}>{showDims ? "Ocultar cotas" : "Mostrar cotas"}</Btn>
-              <Btn small onClick={() => { setCfg(DEFAULT_CONFIG); setLastCalc(new Date()); }}>Restablecer diseño</Btn>
-            </div>}>
+          <Panel title="Plano técnico">
             <div className="grid h-[440px] place-items-center rounded-sm bg-muted">
-              {res ? <WindowSvg cfg={cfg} res={res} showDims={showDims} /> : <Warnings items={warnings} />}
+              {res ? <WindowSvg cfg={cfg} res={res} showDims /> : <Warnings items={warnings} />}
             </div>
           </Panel>
-          <Panel title="Lista de cortes y materiales" actions={<span className="text-xs text-muted-foreground">Calculado {lastCalc.toLocaleTimeString("es-BO")}</span>}>
-            {res ? <PiecesTable res={res} /> : <Warnings items={warnings} />}
-            {res && cfg.model === "aluvi2" && <AccessoriesTable tech={tech} cfg={cfg} />}
+          <Panel title="Lista de cortes, vidrios y accesorios">
+            {res ? <><PiecesTable res={res} /><AccessoriesTable tech={tech} cfg={cfg} /></> : <Warnings items={warnings} />}
           </Panel>
-          {cfg.model === "aluvi2" && <TechEditor tech={tech} setTech={(t) => { setTech(t); setLastCalc(new Date()); }} cfg={cfg} />}
         </div>
 
-        {/* Derecha */}
         <Panel title="Resumen">
           <Summary cfg={cfg} res={res} warnings={warnings} />
         </Panel>
@@ -231,7 +178,7 @@ function PiecesTable({ res }: { res: CalcResult }) {
       <tbody className="font-mono">
         {res.pieces.map((p, i) => (
           <tr key={i} className="border-b border-border/60">
-            <td className="py-1.5 text-primary">{p.code}</td><td className="font-sans">{p.name}</td><td className="text-right">{p.qty}</td><td className="text-right">{fmt(p.length, 1)}</td><td className="text-right text-warning-foreground">{fmt(p.kgm)}*</td><td className="text-right">{fmt(p.unitWeight, 3)}</td><td className="text-right font-medium">{fmt(p.totalWeight, 3)}</td>
+            <td className="py-1.5 text-primary">{p.code}</td><td className="font-sans">{p.name}</td><td className="text-right">{p.qty}</td><td className="text-right">{fmt(p.length, 1)}</td><td className="text-right text-warning-foreground">{fmt(p.kgm, 3)}*</td><td className="text-right">{fmt(p.unitWeight, 3)}</td><td className="text-right font-medium">{fmt(p.totalWeight, 3)}</td>
           </tr>
         ))}
         {res.glassCuts?.map((g, i) => (
@@ -255,7 +202,7 @@ function Summary({ cfg, res, warnings }: { cfg: WindowConfig; res: CalcResult | 
   );
   return (
     <div className="space-y-2">
-      <div className="text-sm font-medium">{MODELS[cfg.model].label} · {GLASS_TYPES[cfg.glassType]}</div>
+      <div className="text-sm font-medium">{MODELS[cfg.model].label}</div>
       <Row label="Ancho total" value={cfg.width ? `${cfg.width} mm` : "—"} />
       <Row label="Alto total" value={cfg.height ? `${cfg.height} mm` : "—"} />
       {res ? <>
@@ -264,11 +211,7 @@ function Summary({ cfg, res, warnings }: { cfg: WindowConfig; res: CalcResult | 
         {res.glassCuts?.map((g, i) => <Row key={i} label="Vidrios" value={`${g.qty} × ${fmt(g.w, 0)}×${fmt(g.h, 0)} mm`} />)}
         <Row label="Superficie de vidrio" value={`${fmt(res.glassArea, 3)} m²`} />
         <Row label="Peso aluminio" value={`${fmt(res.aluminumWeight)} kg`} est />
-        <Row label="Peso vidrio" value={`${fmt(res.glassWeight)} kg`} est />
-        <div className="mt-3 rounded-sm border-2 border-dashed border-warning bg-warning-soft p-3">
-          <div className="text-xs font-semibold uppercase tracking-wide text-warning-foreground">Peso total estimado</div>
-          <div className="font-mono text-3xl font-bold">{fmt(res.totalWeight)} kg</div>
-        </div>
+        <Row label="Peso vidrio" value="Pendiente de validación" />
       </> : <Warnings items={warnings} />}
       <div className="flex gap-3 pt-2 text-[11px] text-muted-foreground">
         <span className="flex items-center gap-1"><span className="h-3 w-3 rounded-sm bg-muted" />Calculado geométricamente</span>
@@ -283,13 +226,13 @@ function PrintSheet({ cfg, res, warnings, tech }: { cfg: WindowConfig; res: Calc
   return (
     <div className="print-only p-6">
       <h1 className="text-xl font-bold">ALUVI · Ficha de ventana</h1>
-      <p className="text-xs">{new Date().toLocaleString("es-BO")} · DOCUMENTO DE DEMOSTRACIÓN — medidas y pesos estimados con parámetros de ejemplo, no válidos para fabricación.</p>
-      <p className="mt-2 text-sm">{MODELS[cfg.model].label}{cfg.model === "aluvi2" && " (PROTOTIPO TÉCNICO PENDIENTE DE VALIDACIÓN)"} · {cfg.width} × {cfg.height} mm · {cfg.model === "fixed" ? 1 : cfg.leaves} hoja(s) · {GLASS_TYPES[cfg.glassType]} {cfg.glassThickness} mm</p>
+      <p className="text-xs">{new Date().toLocaleString("es-BO")} · PROTOTIPO TÉCNICO PENDIENTE DE VALIDACIÓN — confirmar fórmulas antes de fabricar.</p>
+      <p className="mt-2 text-sm">{MODELS[cfg.model].label}{cfg.model === "aluvi2" && " (PROTOTIPO TÉCNICO PENDIENTE DE VALIDACIÓN)"} · {cfg.width} × {cfg.height} mm · {cfg.leaves} hojas</p>
       {res ? <>
         <div className="my-4 h-[340px]"><WindowSvg cfg={cfg} res={res} showDims /></div>
         <PiecesTable res={res} />
         {cfg.model === "aluvi2" && <PrintAccessories cfg={cfg} />}
-        <p className="mt-3 text-sm">Vidrio: {fmt(res.glassArea, 3)} m² · {fmt(res.glassWeight)} kg (est.) — Aluminio: {fmt(res.aluminumWeight)} kg (est.) — <b>Total estimado: {fmt(res.totalWeight)} kg</b></p>
+        <p className="mt-3 text-sm">Vidrio: {fmt(res.glassArea, 3)} m² (peso pendiente de validación) — <b>Peso aluminio: {fmt(res.aluminumWeight)} kg</b></p>
       </> : <Warnings items={warnings} />}
     </div>
   );
