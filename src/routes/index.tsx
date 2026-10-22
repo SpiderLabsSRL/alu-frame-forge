@@ -242,7 +242,7 @@ function PlanoImagen({ cfg }: { cfg: WindowConfig }) {
 }
 
 // ============================================================================
-// TABLA UNIFICADA
+// TABLA UNIFICADA (ANCHOS CORREGIDOS Y SIN ESPACIOS VACÍOS)
 // ============================================================================
 function UnifiedTable({ res, tech }: { res: CalcResult; tech: TechParams }) {
   return (
@@ -250,11 +250,13 @@ function UnifiedTable({ res, tech }: { res: CalcResult; tech: TechParams }) {
       <table className="w-full text-left border-collapse table-fixed">
         <thead className="bg-slate-100 border-b border-slate-200">
           <tr className="text-[10px] uppercase tracking-wider text-slate-500">
-            <th className="px-2 py-2 font-bold text-center w-28">Perfil</th>
-            <th className="px-2 py-2 font-bold w-[35%]">Descripción</th>
+            <th className="px-2 py-2 font-bold text-center w-24">Perfil</th>
+            {/* Ancho fijo para que no absorba el espacio */}
+            <th className="px-2 py-2 font-bold w-40">Descripción</th>
             <th className="px-2 py-2 font-bold text-center w-20">Descuento</th>
             <th className="px-2 py-2 font-bold text-right w-12">Cant</th>
             <th className="px-2 py-2 font-bold text-right w-24">Corte (mm)</th>
+            <th className="px-2 py-2 font-bold text-right w-20">Peso (kg)</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-100">
@@ -265,7 +267,7 @@ function UnifiedTable({ res, tech }: { res: CalcResult; tech: TechParams }) {
             return (
               <tr key={i} className="hover:bg-slate-50 transition-colors">
                 <td className="p-1 align-middle">
-                  <div className="flex h-14 w-24 mx-auto items-center justify-center bg-white border border-slate-200 rounded shadow-sm p-0.5">
+                  <div className="flex h-14 w-20 mx-auto items-center justify-center bg-white border border-slate-200 rounded shadow-sm p-0.5">
                     <img
                       src={`/profiles/${p.code}.png`}
                       alt={p.code}
@@ -277,7 +279,7 @@ function UnifiedTable({ res, tech }: { res: CalcResult; tech: TechParams }) {
                   </div>
                 </td>
                 <td className="px-2 py-1 align-middle">
-                  <div className="text-[12px] font-mono text-slate-800 font-bold leading-tight">{p.code}</div>
+                  <div className="text-[12px] font-mono text-slate-800 font-bold leading-tight truncate">{p.code}</div>
                   <div className="text-[10px] text-slate-500 truncate leading-tight">{p.name}</div>
                 </td>
                 <td className="px-2 py-1 text-center align-middle font-mono text-[11px] text-slate-600 bg-slate-50/50">
@@ -285,6 +287,7 @@ function UnifiedTable({ res, tech }: { res: CalcResult; tech: TechParams }) {
                 </td>
                 <td className="px-2 py-1 text-right align-middle font-mono text-[12px] text-slate-700">{p.qty}</td>
                 <td className="px-2 py-1 text-right align-middle font-mono text-[13px] font-bold text-slate-800">{fmt(p.length, 0)}</td>
+                <td className="px-2 py-1 text-right align-middle font-mono text-[12px] text-slate-600">{fmt(p.totalWeight, 2)}</td>
               </tr>
             );
           })}
@@ -292,13 +295,13 @@ function UnifiedTable({ res, tech }: { res: CalcResult; tech: TechParams }) {
           {res.glassCuts?.map((g, i) => (
             <tr key={"v" + i} className="bg-sky-50/30 hover:bg-sky-50/50">
               <td className="p-1 align-middle">
-                <div className="flex h-14 w-24 mx-auto items-center justify-center border border-sky-200 bg-sky-100 rounded shadow-sm">
+                <div className="flex h-14 w-20 mx-auto items-center justify-center border border-sky-200 bg-sky-100 rounded shadow-sm">
                   <span className="text-[10px] font-bold text-sky-600">VIDRIO</span>
                 </div>
               </td>
               <td className="px-2 py-1 align-middle">
-                <div className="text-[12px] font-mono text-sky-700 font-bold leading-tight">Cristal</div>
-                <div className="text-[10px] text-slate-500 leading-tight">{g.qty} piezas</div>
+                <div className="text-[12px] font-mono text-sky-700 font-bold leading-tight truncate">Cristal</div>
+                <div className="text-[10px] text-slate-500 leading-tight truncate">{g.qty} piezas</div>
               </td>
               <td className="px-2 py-1 text-center align-middle font-mono text-[11px] text-slate-600 bg-slate-50/50">
                  L/{tech.glass.widthDivisor} {tech.glass.widthOffset}
@@ -307,6 +310,7 @@ function UnifiedTable({ res, tech }: { res: CalcResult; tech: TechParams }) {
               <td className="px-2 py-1 text-right align-middle font-mono text-[13px] font-bold text-slate-800">
                 {fmt(g.w, 0)}×{fmt(g.h, 0)}
               </td>
+              <td className="px-2 py-1 text-right align-middle font-mono text-[11px] text-slate-500">—</td>
             </tr>
           ))}
         </tbody>
