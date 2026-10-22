@@ -1,2 +1,3 @@
 - [x] Modelo ALUVI corrediza 2 hojas desde PDF
 - [x] Flujo simplificado: hojas + ancho + alto → Generar ventana → plano, cortes, vidrios, accesorios, peso, ficha
+- [ ] Corregir SVG: perfiles individuales, etiquetas y cotas, actualización automática y ficha imprimible; validar en pantalla.
